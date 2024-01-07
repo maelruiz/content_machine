@@ -1,3 +1,4 @@
+import tkinter
 import whisper
 import os
 import cv2
@@ -6,12 +7,13 @@ from tqdm import tqdm
 import tkinter as tk
 from tkinter import filedialog
 from tkinter import ttk
+import threading
 
 class VideoTranscriber:
     def __init__(self, model_path, video_path, audio_path, master):
         self.master = master
         self.master.title("Video Processor GUI")
-
+        self.process_thread = None 
         self.original_video_path = tk.StringVar()
         self.additional_video_path = tk.StringVar()
         self.output_video_path = tk.StringVar()
@@ -28,13 +30,39 @@ class VideoTranscriber:
         tk.Label(master, text="Output Video Path:").grid(row=2, column=0, sticky="e")
         tk.Entry(master, textvariable=self.output_video_path, width=50).grid(row=2, column=1)
         tk.Button(master, text="Browse", command=self.browse_output).grid(row=2, column=2)
+        
+        tk.Label(master, text="Text Color:").grid(row=5, column=0, sticky="e")
+        self.text_color = tk.Entry(master)
+        self.text_color.grid(row=5, column=1)
+        self.text_color.insert(0,"0,0,255")
 
-        # Create a progress bar
+        tk.Label(master, text="Text Position X:").grid(row=6, column=0, sticky="e")
+        self.text_x = tk.Entry(master)
+        self.text_x.grid(row=6, column=1)
+        self.text_x.insert(0,'int(("frame.shape[1] - text_size[0]) / 2)"')
+
+        tk.Label(master, text="Text Position Y:").grid(row=7, column=0, sticky="e")
+        self.text_y = tk.Entry(master)
+        self.text_y.grid(row=7, column=1)
+        self.text_y.insert(0,"int(height/2)")
+
+        tk.Label(master, text="Text Size:").grid(row=8, column=0, sticky="e")
+        self.text_size = tk.Entry(master)
+        self.text_size.grid(row=8, column=1)   
+        self.text_size.insert(0,2)
+        
+        # Create the progress bar     
         self.progress_var = tk.DoubleVar()
-        ttk.Progressbar(master, variable=self.progress_var, mode="indeterminate").grid(row=3, columnspan=3, pady=10)
+        self.progress_bar = ttk.Progressbar(master, variable=self.progress_var, mode="determinate")
+        self.progress_bar.grid(row=3, columnspan=3, pady=10)
 
         # Create the process button
         tk.Button(master, text="Process Video", command=self.process_video).grid(row=4, columnspan=3, pady=10)
+
+    def choose_text_color(self):
+        color = tkinter.colorchooser.askcolor()[1]
+        self.text_color.delete(0, tk.END)
+        self.text_color.insert(0, color)
 
     def browse_original(self):
         file_path = filedialog.askopenfilename(filetypes=[("Video files", "*.mp4;*.avi;*.mov")])
@@ -48,7 +76,7 @@ class VideoTranscriber:
         file_path = filedialog.asksaveasfilename(defaultextension=".mp4", filetypes=[("Video files", "*.mp4")])
         self.output_video_path.set(file_path)
 
-    def process_video(self):
+    def process_video_threaded(self):
         original_path = self.original_video_path.get()
         additional_path = self.additional_video_path.get()
         output_path = self.output_video_path.get()
@@ -63,17 +91,29 @@ class VideoTranscriber:
         self.text_array = []
         self.fps = 0
         self.char_width = 0
-        final_video_path = './final.mp4'
+        final_video_path = self.output_video_path.get()
+        self.progress_var.set(0)
+        self.progress_bar.start()
         tk.messagebox.showinfo("Success", "Starting process.")
         transcriber.extract_audio()
         tk.messagebox.showinfo("Success", "Finished extracting audio.")
         transcriber.transcribe_video()
         tk.messagebox.showinfo("Success", "Finished transcribing video.")
-        transcriber.create_video(output_video_path)
+        transcriber.create_video(final_video_path)
         tk.messagebox.showinfo("Success", "Finished creating video.")
-        
-        transcriber.add_video_below(output_video_path, add_video, final_video_path)
+        transcriber.add_video_below(final_video_path, add_video, final_video_path)
         tk.messagebox.showinfo("Success", "Finished adding video, output now finished and outputted at: " + final_video_path + ".")
+        self.progress_bar.stop()
+
+    def process_video(self):
+        # Check if another processing thread is running
+        if self.process_thread and self.process_thread.is_alive():
+            tk.messagebox.showinfo("Info", "Processing is already in progress.")
+            return
+
+        # Create a new thread for video processing
+        self.process_thread = threading.Thread(target=self.process_video_threaded)
+        self.process_thread.start()
         
         
 
@@ -160,10 +200,11 @@ class VideoTranscriber:
                 if N_frames >= i[1] and N_frames <= i[2]:
                     text = i[0]
                     text_size, _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-                    text_x = int((frame.shape[1] - text_size[0]) / 2)
-                    text_y = int(height/2)
-                    text_color = (0, 0, 0)
-                    cv2.putText(frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.75, text_color, 2)
+                    text_x = int(self.text_x.get())
+                    text_y = int(self.text_y.get())
+                    text_color = tuple(map(int, self.text_color.get().split(',')))
+
+                    cv2.putText(frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.75, text_color, float(self.text_size.get()))
                     break
             
             cv2.imwrite(os.path.join(output_folder, str(N_frames) + ".jpg"), frame)
