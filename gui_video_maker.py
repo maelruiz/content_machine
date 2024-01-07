@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import filedialog
 from tkinter import ttk
 import threading
+import argparse
 
 class VideoTranscriber:
     def __init__(self, model_path, video_path, audio_path, master):
@@ -254,6 +255,16 @@ output_video_path = "./output.mp4"
 final_video_path = "./final.mp4"
 audio_path = os.path.join(os.getcwd(), "audio.mp3")
 add_video = "./minecraft.mp4"
+
+parser = argparse.ArgumentParser(description="Video Processor with GUI")
+parser.add_argument("--model_path", type=str, help="Path to the model", default="base")
+parser.add_argument("--video_path", type=str, help="Path to the input video", default="./5minsvid.mp4")
+parser.add_argument("--audio_path", type=str, help="Path to the audio file", default="")
+parser.add_argument("--output_video_path", type=str, help="Path to the output video", default="./output.mp4")
+parser.add_argument("--additional_video_path", type=str, help="Path to the additional video", default="./minecraft.mp4")
+
+args = parser.parse_args()
+
 root = tk.Tk()
 transcriber = VideoTranscriber(model_path, video_path, audio_path, root)
 root.mainloop()
