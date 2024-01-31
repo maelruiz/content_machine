@@ -224,11 +224,11 @@ class VideoTranscriber:
             for j in self.text_array:
                 if start_frame + i >= j[1] and start_frame + i <= j[2]:
                     text = j[0]
-                    text_size, _ = cv2.getTextSize(text, {self.text_font.get()}, 0.8, self.text_size.get())
+                    text_size, _ = cv2.getTextSize(text, int(self.text_font.get()), 0.8, int(self.text_size.get()))
                     text_x = int(self.text_x.get())
                     text_y = int(self.text_y.get())
                     text_color = tuple(map(int, self.text_color.get().split(',')))
-                    cv2.putText(frame, text, (text_x, text_y), {self.text_font.get()}, 0.75, text_color, int(self.text_size.get()))
+                    cv2.putText(frame, text, (text_x, text_y), int(self.text_font.get()), 0.75, text_color, int(self.text_size.get()))
                     break
 
             cv2.imwrite(os.path.join(output_folder, str(start_frame + i) + ".jpg"), frame)
@@ -249,8 +249,8 @@ class VideoTranscriber:
         batch_size = self.batch_size.get()
         clips = []
 
-        for i in range(0, len(images), batch_size):
-            batch_images = images[i:i+batch_size]
+        for i in range(0, len(images), int(len(images) / int(batch_size))):
+            batch_images = images[i:i+int(batch_size)]
             resized_images = [cv2.imread(os.path.join(image_folder, image)) for image in batch_images]
 
             clip = ImageSequenceClip(resized_images, fps=self.fps)
