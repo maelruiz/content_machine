@@ -9,17 +9,18 @@ from tkinter import filedialog
 from tkinter import ttk
 import threading
 import argparse
+from tkterminal import Terminal
 
 class VideoTranscriber:
-    def __init__(self, model_path, master):
+    def __init__(self, master):
         self.master = master
-        self.model_path = model_path
         self.master.title("Video Processor GUI")
         self.process_thread = None 
         self.original_video_path = tk.StringVar()
         self.additional_video_path = tk.StringVar()
         self.output_video_path = tk.StringVar()
         self.transcription_stage_output = tk.StringVar()
+
         # Create labels and entry widgets
         tk.Label(master, text="Original Video Path:").grid(row=0, column=0, sticky="e")
         tk.Entry(master, textvariable=self.original_video_path, width=50).grid(row=0, column=1)
@@ -50,17 +51,33 @@ class VideoTranscriber:
         self.text_size = tk.Entry(master)
         self.text_size.grid(row=8, column=1)   
         self.text_size.insert(0,2)
-        
+        tk.Label(master, text="Text Font:").grid(row=9, column=0, sticky="e")
+        self.text_font = tk.Entry(master)
+        self.text_font.grid(row=9, column=1)
+        self.text_font.insert(0,"0")
+        tk.Label(master, text="Batch Size:").grid(row=10, column=0, sticky="e")
+        self.batch_size = tk.Entry(master)
+        self.batch_size.grid(row=10, column=1)
+        self.batch_size.insert(0,"50")
+        tk.Label(master, text="Model type:").grid(row=11, column=0, sticky="e")
+        self.model_path = tk.Entry(master)
+        self.model_path.grid(row=11, column=1)
+        self.model_path.insert(0,"base")
         # Create the progress bar     
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(master, variable=self.progress_var, mode="determinate")
-        self.progress_bar.grid(row=9, columnspan=3, pady=10)
+        self.progress_bar.grid(row=12, columnspan=3, pady=10)
         # Create the process button
-        tk.Button(master, text="Process Video", command=self.process_video).grid(row=10, columnspan=3, pady=10)
+        tk.Button(master, text="Process Video", command=self.process_video).grid(row=13, columnspan=3, pady=10)
+        self.terminal = Terminal(pady=10, padx=10)
+        self.terminal.shell = True
+        self.terminal.linebar = True
+        self.terminal.grid(row=12, column=0, columnspan=3, sticky="nsew")
     def choose_text_color(self):
         color = tkinter.colorchooser.askcolor()[1]
         self.text_color.delete(0, tk.END)
         self.text_color.insert(0, color)
+    
     def browse_original(self):
         file_path = filedialog.askopenfilename(filetypes=[("Video files", "*.mp4;*.avi;*.mov")])
         self.original_video_path.set(file_path)
@@ -80,7 +97,7 @@ class VideoTranscriber:
         if not all([original_path, additional_path, output_path]):
             tk.messagebox.showerror("Error", "Please provide all paths.")
             return
-        self.model = whisper.load_model(model_path)
+        self.model = whisper.load_model(self.model_path.get())
         self.video_path = self.original_video_path
         self.text_array = []
         self.fps = 0
@@ -128,7 +145,7 @@ class VideoTranscriber:
         self.char_width = int(textsize[0] / len(text))
                 
         for j in tqdm(result["segments"]):
-            lines = []
+            lines = [1-2]
             text = j["text"]
             end = j["end"]
             start = j["start"]
@@ -194,7 +211,7 @@ class VideoTranscriber:
                 frames.append(frame)
 
             if not frames:
-                break
+                break 
 
             self.process_frames(frames, N_frames, output_folder)
             N_frames += batch_size
@@ -207,11 +224,11 @@ class VideoTranscriber:
             for j in self.text_array:
                 if start_frame + i >= j[1] and start_frame + i <= j[2]:
                     text = j[0]
-                    text_size, _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+                    text_size, _ = cv2.getTextSize(text, int(self.text_font.get()), 0.8, int(self.text_size.get()))
                     text_x = int(self.text_x.get())
                     text_y = int(self.text_y.get())
                     text_color = tuple(map(int, self.text_color.get().split(',')))
-                    cv2.putText(frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.75, text_color, int(self.text_size.get()))
+                    cv2.putText(frame, text, (text_x, text_y), int(self.text_font.get()), 0.75, text_color, int(self.text_size.get()))
                     break
 
             cv2.imwrite(os.path.join(output_folder, str(start_frame + i) + ".jpg"), frame)
@@ -229,11 +246,11 @@ class VideoTranscriber:
         images.sort(key=lambda x: int(x.split(".")[0]))
 
         # Resize all frames to a smaller resolution and save in batches
-        batch_size = 50
+        batch_size = self.batch_size.get()
         clips = []
 
-        for i in range(0, len(images), batch_size):
-            batch_images = images[i:i+batch_size]
+        for i in range(0, len(images), int(len(images) / int(batch_size))):
+            batch_images = images[i:i+int(batch_size)]
             resized_images = [cv2.imread(os.path.join(image_folder, image)) for image in batch_images]
 
             clip = ImageSequenceClip(resized_images, fps=self.fps)
@@ -254,7 +271,6 @@ class VideoTranscriber:
         original_clip = VideoFileClip(original_video_path)
         
         additional_clip = VideoFileClip(additional_video_path, audio=False)
-        #additional_clip.resize(width=original_clip.width, height=original_clip.height)
         
         additional_clip = additional_clip.set_duration(original_clip.duration)
         
@@ -262,7 +278,6 @@ class VideoTranscriber:
         
         final_clip.write_videofile(output_video_path)
 # Usage
-model_path = "base"
 
 parser = argparse.ArgumentParser(description="Video Processor with GUI")
 parser.add_argument("--model_path", type=str, help="Path to the model", default="base")
@@ -274,5 +289,6 @@ parser.add_argument("--additional_video_path", type=str, help="Path to the addit
 args = parser.parse_args()
 
 root = tk.Tk()
-transcriber = VideoTranscriber(model_path, root)
-root.mainloop()
+transcriber = VideoTranscriber(root)
+
+root.mainloop() 
